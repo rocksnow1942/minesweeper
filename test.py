@@ -136,19 +136,21 @@ def fillBoard(x,board):
     possibilities = []
     for p in combinations(uo,n):
         conflict = False
-        for i in p:            
-            if board[i] == 0:
+        for i in uo:
+            if i in p and board[i]==0:
+                conflict = True
+                break
+            elif i not in p and board[i]==1:
                 conflict = True
                 break
         if not conflict:
             new = board.copy()
             for i in uo:
-                if i in p:                                            
+                if i in p:
                     new[i] = 1
                 else:
-                    new[i] = 0                    
-            possibilities.append(new)
-    
+                    new[i] = 0        
+            possibilities.append(new)    
     return possibilities
 
 uo = findUnopendNeighbor((2,22))
@@ -265,9 +267,7 @@ def updateState(State, remainX, Possibilites,x=None,callstack=0):
     else:
     # fist find the neighbors of x that is close(share unopened blocks) 
         connectedNeighbor = findConnectedNeighbor(x)  
-        connectedNeighbor = [i for i in connectedNeighbor if i  in remainX]
-        if callstack>10:
-            print(f'connecte neighbors: {connectedNeighbor}, {x}')
+        connectedNeighbor = [i for i in connectedNeighbor if i  in remainX]        
         if not connectedNeighbor:
             x = remainX[0]
             p = fillBoard(x,State)
@@ -306,15 +306,21 @@ len(N)
 
 Possibilites
 
-Ns[3]
-
-updateState(o,Ns[3],Possibilites)
+Ns[0].sort()
+Ns[0]
+updateState(o,Ns[0],Possibilites)
 agg = sum(Possibilites) 
 
 pp= list(zip(*np.where(agg>=0)))
     
+len(Possibilites)
+    
 for p in pp:
-    print(f"At position {p}, p= {agg[p]/5}")
+    pi = agg[p]/len(Possibilites)
+    if pi == 0:
+        print(f"At position {p}")
+
+len(Possibilites)
 
 for idx,i in enumerate(Possibilites):
     if i[(1,22)] !=1:
