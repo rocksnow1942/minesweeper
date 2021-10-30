@@ -203,7 +203,7 @@ class Game:
         if not remainX:
             Possibilites.append(State)
             return   
-        if len(Possibilites)>500:            
+        if len(Possibilites)>10000:            
             return
         allp = []                
         if x is None:
@@ -229,8 +229,8 @@ class Game:
     def load(self,file):
         self.state = np.loadtxt(file,dtype=int)
         
-    def saveState(self):
-        np.savetxt(f"{int(time.monotonic())}.txt",self.state,fmt='%2d')
+    def saveState(self,name="state"):
+        np.savetxt(f"{name}{int(time.monotonic())}.txt",self.state,fmt='%2d')
     
     def calculateSafeBlocks(self):                
         numberBlocks = [(i,j) for i,j in zip(*np.where(self.state>0))]
@@ -244,7 +244,7 @@ class Game:
             self.updateState(state,N,possibilities)
             if not possibilities:
                 
-                self.saveState()
+                self.saveState('nopossibility')
                 continue            
             agg = sum(possibilities)            
             nonBomb = list(zip(*np.where(agg==0)))            
@@ -267,7 +267,13 @@ class Game:
     def randomBlock(self):
         b = self.sumState
         a = self.state
-        return random.choice(list(zip(*np.where((b<1 )& (a==-1)))))
+        if len(b[b>0]) == 0:
+            return random.choice(list(zip(*np.where(a==-1))))
+        minIdx = np.unravel_index(np.argmin(b[b>0],axis=None), b.shape) #minimum chance block        
+        if a[minIdx] != -1:
+            return random.choice(list(zip(*np.where(a==-1))))
+        return minIdx
+        # return random.choice(list(zip(*np.where((b<1 )& (a==-1)))))
             
     def remaining(self):
         return (g.state==-1).sum() - self.bombCount
@@ -304,21 +310,23 @@ class Game:
                     continue
                 safeBlocks = self.calculateSafeBlocks()
                 if safeBlocks:
-                    # for i in safeBlocks[0:1]:
-                    self.click(random.choice(safeBlocks))
+                    for i in safeBlocks:
+                        self.click(i)
+                    # self.click(random.choice(safeBlocks))
                 else:
+                    print('Ahhh I have to guess randomly!')
                     self.click(self.randomBlock())   
                 
                 if self.remaining()==1:
-                    # click 
+                    # click the OK for online mode
                     pyautogui.click(681,246)                    
                     time.sleep(0.5)
-            except ValueError:                
+            except ValueError:
                 print(f'Im Dead. Reset Game :( Total lose:{len(self.playStat["lose"])}')
-                self.clickReset(False)
-            except Exception as e:
+                self.clickReset(False)                
+            except:
                 self.printGameSummary()
-                raise e
+                
                 
             
         
@@ -328,4 +336,4 @@ if __name__ == '__main__':
     g.init()
     g.play()
     
-    
+     
