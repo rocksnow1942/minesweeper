@@ -60,6 +60,10 @@ class Game:
             row=9
             column=9       
             bombCount = 10
+        elif mode == 'normal':
+            row=16
+            column=16
+            bombCount = 40
             
         boardImg = f'./{PLATFORM}{mode.capitalize()}.png'
         self.shape=(row,column)
