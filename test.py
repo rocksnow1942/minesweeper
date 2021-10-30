@@ -4,383 +4,324 @@ import numpy as np
 import pyautogui
 import matplotlib.pyplot as plt
 from itertools import product,combinations
-FEATURE_PIXELS = [(4,7),(0,7)]
-BLOCK_SIZE = (16,16)
+import time
+import random
+import platform
+from PIL import ImageGrab
+from mss import mss
+# https://python-mss.readthedocs.io/installation.html
 
 
+pyautogui.PAUSE = 0.01
+
+if 'darwin' in platform.platform().lower():
+    FEATURE_PIXELS = [(8,14),(0,14)]
+    BLOCK_SIZE = (32,32)
+    PIXEL_FEATURE = [1134, 909, 391, 441, 354, 183, 661, 0, 738]
+    PLATFORM = 'mac'
+else:
+    FEATURE_PIXELS = [(4,7),(0,7)]
+    BLOCK_SIZE = (16,16)
+    PIXEL_FEATURE = [1134,  765,  246,  255,  369,  123,  615,    0,  738]
+    PLATFORM = 'win'
+    
 
 def blockClassifier(pixels):
     if pixels[3:].min() == 255:
         return -1
-    id = ((pixels[0:3])*[1,2,3]).sum()
-    return [1134,  765,  246,  255,  369,  123,  615,    0,  738].index(id)
+    id = ((pixels[0:3])*[1,2,3]).sum()    
+    return PIXEL_FEATURE.index(id)
 
 
 def boardStateParser(imgArray):    
     bx,by = BLOCK_SIZE
-    featurePixels = [imgArray[x::bx,y::by,:] for x,y in FEATURE_PIXELS]
+    featurePixels = [imgArray[x::bx,y::by,0:3] for x,y in FEATURE_PIXELS]
+    minX = min(i.shape[0] for i in featurePixels )
+    minY = min(i.shape[1] for i in featurePixels )
+    featurePixels = [i[0:minX,0:minY,:] for i in featurePixels]
     feature = np.concatenate(featurePixels, axis=2)
     res = np.apply_along_axis(blockClassifier, 2, feature)
     return res
 
-    
-def isCloseNeighbor(i,j):
-    iUn = findUnopendNeighbor(i)
-    jUn = findUnopendNeighbor(j)
-    for x in iUn:
-        if x in jUn:
-            return True
-    return False
-    
+def imageCropper(file,row,col):
+    m = PIL.Image.open(file)
+    w,h = BLOCK_SIZE
+    return m.crop((0,0,col*w,row*h))
 
-def sortCloseNeighbor(x,X,group):
-    neighbors = []
-    for i in X:
-        if isCloseNeighbor(i,x):
-            group.append(i)
-            neighbors.append(i)
-    for i in neighbors:
-        X.remove(i)
-    for i in neighbors:
-        sortCloseNeighbor(i,X,group)
-            
-    
-def groupCloseNeighbors(X):
-    groups=[]
-    while X:
-        x = X.pop()
-        group = [x]
-        sortCloseNeighbor(x,X,group)
-        groups.append(group)
-    return groups
 
-def getNeighborPositions(bp):
-    x,y = bp
-    p = list(product(range(max(0,x-1),min(x+2,Board.shape[0])), range(max(0,y-1),min(y+2,Board.shape[1]))))
-    p.remove(bp)
-    return p
-
-    
-def getCrossPositions(bp):
-    x,y = bp
-    p = []
-    if x-1>=0:
-        p.append((x-1,y))
-    if y+1<Board.shape[1]:
-        p.append((x,y+1))
-    if x+1<Board.shape[0]:
-        p.append((x+1,y))
-    if y-1>=0:
-        p.append((x,y-1))
-    return p
-    
-def findNumberCross(bp):
-    ps = getCrossPositions(bp)
-    number = []
-    for p in ps:
-        if Board[p] > 0:
-            number.append(p)
-    return number
-        
-    
-
-def findUnopend(bp):
-    x,y = bp
-    xs = max(x-1 , 0)
-    ys = max(y-1 , 0)
-    all = Board[xs:x+2,ys:y+2]
-    unopened = list((xs+i,ys+j) for i,j in zip(*np.where(all==-1)))
-    return unopened
-    
-    
-def findUnopendNeighbor(bp):
-    ps = getNeighborPositions(bp)
-    unopened = []
-    for p in ps:
-        if Board[p] == -1:
-            unopened.append(p)
-    return unopened
-
-def findNumberNeighbor(bp):
-    ps = getNeighborPositions(bp)
-    number = []
-    for p in ps:
-        if Board[p] > 0:
-            number.append(p)
-    return number
-    
-    
-def closeNeighbor(x,i):
-    u = findUnopend(x)
-    o = findUnopend(i)
-    
-def findConnectedNeighbor(x):
-    uo = findUnopendNeighbor(x)
-    xNeighbor = findNumberCross(x)
-    closeNeighbor = []
-    for i in xNeighbor:
-        iUnopen = findUnopendNeighbor(i)
-        isClose = False
-        for j in iUnopen:
-            if j in uo:
-                isClose = True
-                break
-        if isClose:
-            closeNeighbor.append(i)
-    return closeNeighbor
-    
-def fillBoard(x,board):
-    n = Board[x] # howmany bombos
-    uo = findUnopendNeighbor(x) # howmany unopened
-    # need to filter out the filled ones in board    
-    possibilities = []
-    for p in combinations(uo,n):
-        conflict = False
-        for i in uo:
-            if i in p and board[i]==0:
-                conflict = True
-                break
-            elif i not in p and board[i]==1:
-                conflict = True
-                break
-        if not conflict:
-            new = board.copy()
-            for i in uo:
-                if i in p:
-                    new[i] = 1
-                else:
-                    new[i] = 0        
-            possibilities.append(new)    
-    return possibilities
-
-uo = findUnopendNeighbor((2,22))
-n = Board[(2,22)]
-
-    
     
 class Game:
-    def __init__(self,gameSize=(30,16), boardImg = './board.png'):
-        self.gameSize = gameSize
+    def __init__(self,mode='easy'):
+        if mode =='hard':
+            row=16
+            column=30            
+            bombCount = 99
+        elif mode == 'easy':
+            row=9
+            column=9       
+            bombCount = 10
+            
+        boardImg = f'./{PLATFORM}{mode.capitalize()}.png'
+        self.shape=(row,column)
         self.boardImg = boardImg
-
-    def getBoardPosition(self):
+        self.box = None # box position of game board
+        self.state = np.full(self.shape,-1)
+        self.sumState = np.zeros(self.shape)
+        self.bombCount = bombCount        
+        self.playtime = 0
+        self.playStat = {'win':[],'lose':[]}
+        self.sct = mss()
+            
+    def __getitem__(self,idx):
+        return self.state[idx]
+        
+    def init(self):
         box = pyautogui.locateOnScreen(self.boardImg)
         if box is None:
             raise RuntimeError('Board not found') 
         self.box = box
+        l,t,w,h = box
+        self._monitor = {"top":t/2, "left": l/2, "width": w/2, "height": h/2}
     
-    def readBoardState(self):
-        capture = pyautogui.screenshot(region=self.box)
+    def readBoardState(self):        
+        # capture = pyautogui.screenshot(region=self.box) # ~0.5s                
+        # capture = ImageGrab.grab(bbox=(l,t,l+w,t+h)) @ ~ 0.45s        
+        img = self.sct.grab(self._monitor)
+        capture = PIL.Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX") # this is very fast! 0.005 second        
         caparr = np.array(capture,dtype='int16')
         self.state = boardStateParser(caparr)
-
-
-np.savetxt('s1.txt',g.state,fmt='%2d')
-np.savetxt('s3.txt',g.state,fmt='%2d')
-g = Game()
-
-g.getBoardPosition()
-
-g.readBoardState()
-g.state
-
-s3 = g.state
-
-g.state[g.state>0].sum()
-
-g.state[]
-np.where(s3>0)
-
-g.state[g.state>0]
-
-g.state>0
-
-
-s3 = np.loadtxt('s3.txt',dtype='int8')
-
-
-np.where(s3>0)
-g.state
-
-N = [(i,j) for i,j in zip(*np.where(s3>0))]
-N
-
-# group N in to connecting tiles
-
-
-
-
-len(groups)
-groups[0]
-groups[1]
-
-groups[2]
-
-groups[3]
-
-Board = s3
-
-Board[0,28]
-
-all = Board[0:2,28:31]
-all
-np.where(all==-1)
-
-list(zip(*np.where(all==-1)))
-
-
-
-Board.shape
-n = getNeighborPositions((1,29))
-
-
-
     
-findUnopend((0,28))
-
-
-                 
     
-                
-                
-findUnopendNeighbor((1, 19))        
-list(combinations([(0, 18), (1, 18), (2, 18)],2))
-
-list(combinations([(1,2),(3,4),(4,5)],5))
+    def isCloseNeighbor(self,i,j):
+        iUn = self.findUnopendNeighbor(i)
+        jUn = self.findUnopendNeighbor(j)
+        for x in iUn:
+            if x in jUn:
+                return True
+        return False
         
-
-
-Board[(1,28)]
-
-def updateState(State, remainX, Possibilites,x=None,callstack=0):        
-    if not remainX:
-        Possibilites.append(State)
-        return
+        
+    def sortCloseNeighbor(self,x,X,group):
+        neighbors = []
+        for i in X:
+            if self.isCloseNeighbor(i,x):
+                group.append(i)
+                neighbors.append(i)
+        for i in neighbors:
+            X.remove(i)
+        for i in neighbors:
+            self.sortCloseNeighbor(i,X,group)
+            
+    def groupCloseNeighbors(self,X):
+        groups=[]
+        while X:
+            x = X.pop()
+            group = [x]
+            self.sortCloseNeighbor(x,X,group)
+            groups.append(group)
+        return groups
+        
+    def getCrossPositions(self,bp):
+        x,y = bp
+        p = []
+        if x-1>=0:
+            p.append((x-1,y))
+        if y+1<self.shape[1]:
+            p.append((x,y+1))
+        if x+1<self.shape[0]:
+            p.append((x+1,y))
+        if y-1>=0:
+            p.append((x,y-1))
+        return p
+        
+    def findNumberCross(self,bp):
+        ps = self.getCrossPositions(bp)
+        number = []
+        for p in ps:
+            if self[p] > 0:
+                number.append(p)
+        return number
+        
+    def getNeighborPositions(self,bp):
+        x,y = bp
+        p = list(product(range(max(0,x-1),min(x+2,self.shape[0])), range(max(0,y-1),min(y+2,self.shape[1]))))
+        p.remove(bp)
+        return p
     
-    allp = []    
+    def findUnopendNeighbor(self,bp):
+        ps = self.getNeighborPositions(bp)
+        unopened = []
+        for p in ps:
+            if self[p] == -1:
+                unopened.append(p)
+        return unopened
         
-    if x is None:
-        x = remainX[0]
-        p = fillBoard(x,State)
+    def findConnectedNeighbor(self,x):
+        uo = self.findUnopendNeighbor(x)
+        xNeighbor = self.findNumberCross(x)
+        closeNeighbor = []
+        for i in xNeighbor:
+            iUnopen = self.findUnopendNeighbor(i)
+            isClose = False
+            for j in iUnopen:
+                if j in uo:
+                    isClose = True
+                    break
+            if isClose:
+                closeNeighbor.append(i)
+        return closeNeighbor
         
-        allp.append((x,p))
-    else:
-    # fist find the neighbors of x that is close(share unopened blocks) 
-        connectedNeighbor = findConnectedNeighbor(x)  
-        connectedNeighbor = [i for i in connectedNeighbor if i  in remainX]        
-        if not connectedNeighbor:
+    def fillBoard(self,x,board):
+        n = self[x] # howmany bombos
+        uo = self.findUnopendNeighbor(x) # howmany unopened
+        # need to filter out the filled ones in board    
+        possibilities = []
+        for p in combinations(uo,n):
+            conflict = False
+            for i in uo:
+                if i in p and board[i]==0:
+                    conflict = True
+                    break
+                elif i not in p and board[i]==1:
+                    conflict = True
+                    break
+            if not conflict:
+                new = board.copy()
+                for i in uo:
+                    if i in p:
+                        new[i] = 1
+                    else:
+                        new[i] = 0        
+                possibilities.append(new)    
+        return possibilities
+        
+    def updateState(self,State, remainX, Possibilites,x=None,):        
+        if not remainX:
+            Possibilites.append(State)
+            return   
+        if len(Possibilites)>500:            
+            return
+        allp = []                
+        if x is None:
             x = remainX[0]
-            p = fillBoard(x,State)
+            p = self.fillBoard(x,State)            
             allp.append((x,p))
         else:
-            for c in connectedNeighbor:
-                p = fillBoard(c,State)                
-                allp.append((c,p))
-    
-    for block,P in allp:
+        # fist find the neighbors of x that is close(share unopened blocks) 
+            connectedNeighbor = self.findConnectedNeighbor(x)  
+            connectedNeighbor = [i for i in connectedNeighbor if i  in remainX]        
+            if not connectedNeighbor:
+                x = remainX[0]
+                p = self.fillBoard(x,State)
+                allp.append((x,p))
+            else:
+                for c in connectedNeighbor:
+                    p = self.fillBoard(c,State)                
+                    allp.append((c,p))        
+        for block,P in allp:            
+            for p in P:
+                self.updateState(p,[i for i in remainX if i!=block],Possibilites,block)
+                
+    def load(self,file):
+        self.state = np.loadtxt(file,dtype=int)
         
-        for p in P:
-            updateState(p,[i for i in remainX if i!=block],Possibilites,block,callstack=callstack+1)
+    def saveState(self):
+        np.savetxt(f"{int(time.monotonic())}.txt",self.state,fmt='%2d')
+    
+    def calculateSafeBlocks(self):                
+        numberBlocks = [(i,j) for i,j in zip(*np.where(self.state>0))]
+        Ns = self.groupCloseNeighbors(numberBlocks)        
+        cleanBlocks = []  
+        sumState = []
+        for N in Ns:            
+            # N.sort()
+            possibilities = []
+            state = np.full(self.shape,-1) # maybe remember the state
+            self.updateState(state,N,possibilities)
+            if not possibilities:
+                
+                self.saveState()
+                continue            
+            agg = sum(possibilities)            
+            nonBomb = list(zip(*np.where(agg==0)))            
+            cleanBlocks.extend(nonBomb)
+            agg[agg<0] = 0
+            avg = agg.astype(float)/len(possibilities)
+            sumState.append(avg)
+        if sumState:
+            self.sumState = sum(sumState)
+        return cleanBlocks
+    
+    def blockPosition(self,pos):
+        row,col = pos
+        x,y = (16,16) # weirdly, the x,y position of mouse click doesn't have the scale.
+        return self.box.left/2 + (col + 0.5) * (x) , self.box.top/2 + (row + 0.5) * (y)
+    
+    def click(self,i):
+        pyautogui.click(*self.blockPosition(i))        
         
+    def randomBlock(self):
+        b = self.sumState
+        a = self.state
+        return random.choice(list(zip(*np.where((b<1 )& (a==-1)))))
+            
+    def remaining(self):
+        return (g.state==-1).sum() - self.bombCount
+    
+    def clickReset(self,win):
+        mode = 'win' if win else 'lose'
+        self.playStat[mode].append(time.monotonic()-self.playtime)                    
+        pyautogui.click(x=(self.box.left + self.box.width/2)/2, y = self.box.top/2 - 27)
+        self.sumState = np.zeros(self.shape)
+        self.playtime = time.monotonic()
+    
+    def printGameSummary(self):
+        win = self.playStat['win']
+        lose = self.playStat['lose']
+        winAvgT = sum(win)/len(win) if win else 0
+        loseAvgT = sum(lose)/len(lose) if lose else 0
+        print('='*25 +'GAME SUMMARY' + '='*25)
+        print(f"Total game won: {len(win)}")
+        print(f"Average time to win: {winAvgT:.2f} seconds")
+        print(f"Total game lost: {len(lose)}")
+        print(f"Average time to lose: {loseAvgT:.2f} seconds")
+        print(f"Total time played: {(sum(win) + sum(lose) ) / 60:.2f} minutes.")
+        print('='*62)
+
+
+    def play(self):
+        self.playtime = time.monotonic()
+        while 1:
+            try:                
+                self.readBoardState()                            
+                if self.remaining()==0:
+                    print(f"I win! total win = {len(self.playStat['win'])}")
+                    self.clickReset(True)
+                    continue
+                safeBlocks = self.calculateSafeBlocks()
+                if safeBlocks:
+                    # for i in safeBlocks[0:1]:
+                    self.click(random.choice(safeBlocks))
+                else:
+                    self.click(self.randomBlock())   
+                
+                if self.remaining()==1:
+                    # click 
+                    pyautogui.click(681,246)                    
+                    time.sleep(0.5)
+            except ValueError:                
+                print(f'Im Dead. Reset Game :( Total lose:{len(self.playStat["lose"])}')
+                self.clickReset(False)
+            except Exception as e:
+                self.printGameSummary()
+                raise e
+                
+            
         
-o = np.full_like(Board,-1)
-Possibilites = []        
 
-
-N = [(i,j) for i,j in zip(*np.where(s3>0))]
-
-Ns = groupCloseNeighbors(N)
-
-len(Ns)
-Ns[3]
-
-len(N)
-N.pop()
-len(N)
-N[0]
-p = fillBoard((0, 21),o)
-p
-len(Ns[3])
-len(p)
-len(N)
-
-Possibilites
-
-Ns[0].sort()
-Ns[0]
-updateState(o,Ns[0],Possibilites)
-agg = sum(Possibilites) 
-
-pp= list(zip(*np.where(agg>=0)))
+if __name__ == '__main__':    
+    g = Game(mode='easy')
+    g.init()
+    g.play()
     
-len(Possibilites)
     
-for p in pp:
-    pi = agg[p]/len(Possibilites)
-    if pi == 0:
-        print(f"At position {p}")
-
-len(Possibilites)
-
-for idx,i in enumerate(Possibilites):
-    if i[(1,22)] !=1:
-        print(idx)
-
-np.savetxt('wrong.txt',Possibilites[1],fmt='%2d')
-
-
-
-len(Possibilites)
-
-len(Possibilites)
-
-    
-len(Possibilites)
-    
-board = np.zeros_like(Board)
-
-
-np.array(Board)
-updateState((1,28),None,None)
-
-
-connectedNeighbor = findConnectedNeighbor(x)
-x
-connectedNeighbor
-
-x
-len(Ns[3])
-remainX = Ns[3]
-o = o
-State = o
-x = remainX[0]
-p = fillBoard(x,State)
-
-State = p[0]
-remainX = [i for i in remainX if i!=x]
-
-connectedNeighbor = findConnectedNeighbor(x)  
-x
-connectedNeighbor
-for c in connectedNeighbor:
-    
-[(2, 24), (3, 23)]
-
-c = connectedNeighbor[0]
-    
-p = fillBoard(c,State)    
-
-
-
-
-len(p)
-p[0]
-
-
-for p in Possibilites:
-    print(p[0:3,22:25])
-
-
-
-
-
