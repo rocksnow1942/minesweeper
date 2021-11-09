@@ -203,7 +203,7 @@ class Game:
         if not remainX:
             Possibilites.append(State)
             return   
-        if len(Possibilites)>10000:            
+        if len(Possibilites)>1000:            
             return
         allp = []                
         if x is None:
@@ -329,11 +329,16 @@ class Game:
                 exit(0)
                 
                 
-            
+import argparse            
         
 
 if __name__ == '__main__':    
-    g = Game(mode='easy')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode',type=str,default='easy',
+                        help='easy, normal, or hard.',
+                        choices=['easy','normal','hard'])
+    argument = parser.parse_args()
+    g = Game(mode=argument.mode)
     g.init()
     g.play()
     
