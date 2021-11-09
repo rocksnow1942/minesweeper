@@ -326,6 +326,7 @@ class Game:
                 self.clickReset(False)                
             except:
                 self.printGameSummary()
+                exit(0)
                 
                 
             
